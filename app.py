@@ -12,9 +12,9 @@ except Exception:
     create_client = None
 
 
-# =========================================================
+# ============================================================
 # PAGE
-# =========================================================
+# ============================================================
 
 st.set_page_config(
     page_title="DEPTH — Japanese Fashion Discovery",
@@ -34,22 +34,22 @@ LOG_FIELDS = [
     "selected",
     "mode",
     "entity",
-    "depth"
+    "depth",
 ]
 
 
-# =========================================================
+# ============================================================
 # QUERY PARAMS
-# =========================================================
+# ============================================================
 
 def qp(name, default="direct"):
     v = st.query_params.get(name, default)
     return v[0] if isinstance(v, list) else v
 
 
-# =========================================================
+# ============================================================
 # SESSION
-# =========================================================
+# ============================================================
 
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
@@ -63,20 +63,33 @@ if "campaign" not in st.session_state:
 if "logged_session" not in st.session_state:
     st.session_state.logged_session = False
 
+if "saved_entities" not in st.session_state:
+    st.session_state.saved_entities = []
 
-# =========================================================
+if "focus" not in st.session_state:
+    st.session_state.focus = None
+
+if "detail_entity" not in st.session_state:
+    st.session_state.detail_entity = None
+
+
+# ============================================================
 # SUPABASE
-# =========================================================
+# ============================================================
 
 @st.cache_resource
 def get_supabase():
+
     if create_client is None:
         return None, "supabase library could not be imported"
 
     try:
         url = st.secrets["supabase"]["url"]
         key = st.secrets["supabase"]["key"]
-        return create_client(url, key), None
+
+        client = create_client(url, key)
+
+        return client, None
 
     except Exception as e:
         return None, f"{type(e).__name__}: {e}"
@@ -95,7 +108,7 @@ def log_event(event, selected="", mode="", entity="", depth=""):
         else selected,
         "mode": mode,
         "entity": entity,
-        "depth": depth
+        "depth": depth,
     }
 
     db, db_error = get_supabase()
@@ -104,11 +117,13 @@ def log_event(event, selected="", mode="", entity="", depth=""):
         st.error(f"Supabase connection error: {db_error}")
 
     if db is not None:
+
         try:
             db.table("depth_events").insert(
                 row,
                 returning="minimal"
             ).execute()
+
             return
 
         except Exception as e:
@@ -118,6 +133,7 @@ def log_event(event, selected="", mode="", entity="", depth=""):
 
     # Local fallback
     try:
+
         new = not LOG.exists()
 
         with LOG.open(
@@ -126,275 +142,574 @@ def log_event(event, selected="", mode="", entity="", depth=""):
             encoding="utf-8"
         ) as f:
 
-            writer = csv.DictWriter(
+            w = csv.DictWriter(
                 f,
                 fieldnames=LOG_FIELDS
             )
 
             if new:
-                writer.writeheader()
+                w.writeheader()
 
-            writer.writerow(row)
+            w.writerow(row)
 
     except Exception as e:
+
         st.error(
             f"Local log error: {type(e).__name__}: {e}"
         )
 
 
+# ============================================================
+# FIRST SESSION EVENT
+# ============================================================
+
 if not st.session_state.logged_session:
+
     log_event("session_start")
+
     st.session_state.logged_session = True
 
 
-# =========================================================
-# DEPTH TASTE WORLDS
-# ---------------------------------------------------------
-# 画像はブランド商品を意味しない。
-# ブランドの世界観 / Taste を表現するVisual。
-# =========================================================
+# ============================================================
+# ENTITY HELPERS
+# ============================================================
 
-TASTE_WORLDS = {
+IDMAP = {
+    e["entity_id"]: e
+    for e in ENT
+}
 
-    "MILITARY": {
-        "label": "MILITARY / UTILITY / TOKYO",
+
+def get_entity(name):
+
+    if not name:
+        return None
+
+    return BY_NAME.get(name.lower())
+
+
+def entity_depth(name):
+
+    e = get_entity(name)
+
+    if not e:
+        return ""
+
+    return e.get("discovery_depth", "")
+
+
+# ============================================================
+# VISUAL SYSTEM
+# ============================================================
+#
+# IMPORTANT:
+#
+# These are VISUAL MOOD images.
+# They are NOT official product photography.
+#
+# The objective is:
+#
+#   "Does this image make the visitor understand
+#    the world of the entity before reading?"
+#
+# ============================================================
+
+
+VISUALS = {
+
+    "WTAPS": {
         "image":
             "https://images.unsplash.com/photo-1523398002811-999ca8dec234"
-            "?auto=format&fit=crop&w=1200&q=85",
-        "description":
-            "Uniforms, utility, workwear and the quieter side of Tokyo street."
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "MILITARY / UTILITY / TOKYO",
+        "note":
+            "Uniforms, utility and the quieter side of Tokyo street.",
     },
 
-    "QUIET": {
-        "label": "QUIET / MATERIAL / REFINED",
+    "DESCENDANT": {
         "image":
-            "https://images.unsplash.com/photo-1594938298603-c8148c4dae35"
-            "?auto=format&fit=crop&w=1200&q=85",
-        "description":
-            "Material, proportion and restraint over obvious branding."
+            "https://images.unsplash.com/photo-1523398002811-999ca8dec234"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "MILITARY / UTILITY / TOKYO",
+        "note":
+            "Relaxed utility, uniforms and everyday Tokyo street.",
     },
 
-    "TECHNICAL": {
-        "label": "TECHNICAL / OUTDOOR / URBAN",
+    "nonnative": {
+        "image":
+            "https://images.unsplash.com/photo-1506629082955-511b1aa562c8"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "UTILITY / TRAVEL / URBAN",
+        "note":
+            "Everyday clothing shaped by movement, utility and city life.",
+    },
+
+    "nanamica": {
         "image":
             "https://images.unsplash.com/photo-1551632811-561732d1e306"
-            "?auto=format&fit=crop&w=1200&q=85",
-        "description":
-            "Outdoor function translated into everyday urban clothing."
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "TECHNICAL / OUTDOOR / CITY",
+        "note":
+            "Outdoor function translated into calm everyday clothing.",
     },
 
-    "HERITAGE": {
-        "label": "HERITAGE / VINTAGE / CRAFT",
+    "THE NORTH FACE PURPLE LABEL": {
         "image":
-            "https://images.unsplash.com/photo-1542272604-787c3835535d"
-            "?auto=format&fit=crop&w=1200&q=85",
-        "description":
-            "Old garments, craft, patina and reinterpretations of the familiar."
+            "https://images.unsplash.com/photo-1551632811-561732d1e306"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "TECHNICAL / JAPAN / OUTDOOR",
+        "note":
+            "A Japanese lens on outdoor utility and everyday design.",
     },
 
-    "CONTEMPORARY": {
-        "label": "TOKYO / CONTEMPORARY / BALANCE",
+    "1LDK": {
+        "image":
+            "https://images.unsplash.com/photo-1441986300917-64674bd600d8"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "TOKYO / CONTEMPORARY / BALANCE",
+        "note":
+            "A Tokyo point of view connecting quiet contemporary labels.",
+    },
+
+    "UNIVERSAL PRODUCTS.": {
+        "image":
+            "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "EVERYDAY / BASIC / TOKYO",
+        "note":
+            "Ordinary wardrobe pieces refined through proportion and detail.",
+    },
+
+    "Graphpaper": {
+        "image":
+            "https://images.unsplash.com/photo-1490481651871-ab68de25d43d"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "MINIMAL / VOLUME / TOKYO",
+        "note":
+            "Clean forms, generous volume and contemporary restraint.",
+    },
+
+    "A.PRESSE": {
+        "image":
+            "https://images.unsplash.com/photo-1594938298603-c8148c4dae35"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "HERITAGE / VINTAGE / CRAFT",
+        "note":
+            "Old garments, craft, patina and reinterpretations of the familiar.",
+    },
+
+    "meanswhile": {
+        "image":
+            "https://images.unsplash.com/photo-1529139574466-a303027c1d8b"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "TECHNICAL / UTILITY / URBAN",
+        "note":
+            "Function and construction designed for everyday movement.",
+    },
+
+    "NEIGHBORHOOD": {
+        "image":
+            "https://images.unsplash.com/photo-1520975954732-35dd22299614"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "MOTOR / MILITARY / TOKYO",
+        "note":
+            "Motor culture, military references and Tokyo street identity.",
+    },
+
+    "COMOLI": {
         "image":
             "https://images.unsplash.com/photo-1523381210434-271e8be1f52b"
-            "?auto=format&fit=crop&w=1200&q=85",
-        "description":
-            "Modern Tokyo clothing built around proportion, balance and everyday use."
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "QUIET / MATERIAL / JAPAN",
+        "note":
+            "Quiet clothing built around material, ease and everyday life.",
     },
 
-    "EXPERIMENTAL": {
-        "label": "CHARACTER / LAYERING / UNEXPECTED",
+    "AURALEE": {
         "image":
-            "https://images.unsplash.com/photo-1552374196-c4e7ffc6e126"
-            "?auto=format&fit=crop&w=1200&q=85",
-        "description":
-            "Familiar references pushed somewhere stranger and more personal."
+            "https://images.unsplash.com/photo-1496217590455-aa63a8350eea"
+            "?auto=format&fit=crop&w=1200&q=82",
+        "world":
+            "MATERIAL / REFINED / QUIET",
+        "note":
+            "Material-first clothing with refined proportions and restraint.",
+    },
+
+}
+
+
+# Different fallbacks.
+# This prevents every unknown entity showing exactly the same image.
+
+FALLBACK_IMAGES = [
+
+    "https://images.unsplash.com/photo-1445205170230-053b83016050"
+    "?auto=format&fit=crop&w=1200&q=82",
+
+    "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab"
+    "?auto=format&fit=crop&w=1200&q=82",
+
+    "https://images.unsplash.com/photo-1523381210434-271e8be1f52b"
+    "?auto=format&fit=crop&w=1200&q=82",
+
+    "https://images.unsplash.com/photo-1441986300917-64674bd600d8"
+    "?auto=format&fit=crop&w=1200&q=82",
+
+    "https://images.unsplash.com/photo-1483985988355-763728e1935b"
+    "?auto=format&fit=crop&w=1200&q=82",
+
+]
+
+
+def stable_fallback(name):
+
+    if not name:
+        return FALLBACK_IMAGES[0]
+
+    index = sum(
+        ord(c)
+        for c in name
+    ) % len(FALLBACK_IMAGES)
+
+    return FALLBACK_IMAGES[index]
+
+
+def visual_for(name):
+
+    if name in VISUALS:
+        return VISUALS[name]
+
+    e = get_entity(name)
+
+    if e:
+
+        axes = [
+            ("STREET", float(e.get("street", 0))),
+            ("MINIMAL", float(e.get("minimal", 0))),
+            ("UTILITY", float(e.get("utility", 0))),
+            ("HERITAGE", float(e.get("heritage", 0))),
+            ("TECHNICAL", float(e.get("technical", 0))),
+            ("MILITARY", float(e.get("military", 0))),
+        ]
+
+        axes.sort(
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        world = " / ".join(
+            x[0]
+            for x in axes[:3]
+        )
+
+    else:
+        world = "JAPAN / DISCOVERY / INDEPENDENT"
+
+    return {
+        "image": stable_fallback(name),
+        "world": world,
+        "note":
+            "A visual mood for discovery — not official product photography.",
     }
+
+
+# ============================================================
+# NEW / JUST ADDED
+# ============================================================
+#
+# MVP:
+# Keep this explicit.
+#
+# Later:
+# move to Supabase / graph metadata and automate updates.
+#
+# ============================================================
+
+NEW_ENTITIES = {
+    "A.PRESSE": "NEW",
+    "meanswhile": "JUST ADDED",
+    "THE NORTH FACE PURPLE LABEL": "DEEP CUT",
 }
 
 
-# =========================================================
-# ENTITY → TASTE WORLD
-# =========================================================
+def new_badge(name):
 
-ENTITY_WORLD = {
-
-    # Military / street
-    "WTAPS": "MILITARY",
-    "NEIGHBORHOOD": "MILITARY",
-    "DESCENDANT": "MILITARY",
-    "C.E": "EXPERIMENTAL",
-    "UNDERCOVER": "EXPERIMENTAL",
-
-    # Tokyo contemporary
-    "nonnative": "CONTEMPORARY",
-    "Graphpaper": "CONTEMPORARY",
-    "FreshService": "CONTEMPORARY",
-    "UNIVERSAL PRODUCTS.": "CONTEMPORARY",
-    "N.HOOLYWOOD": "CONTEMPORARY",
-    "1LDK": "CONTEMPORARY",
-
-    # Quiet / refined
-    "AURALEE": "QUIET",
-    "COMOLI": "QUIET",
-    "CIOTA": "QUIET",
-    "blurhms": "QUIET",
-    "ATON": "QUIET",
-    "YOKE": "QUIET",
-    "ssstein": "QUIET",
-    "A.PRESSE": "HERITAGE",
-    "MAATEE&SONS": "HERITAGE",
-
-    # Technical
-    "nanamica": "TECHNICAL",
-    "DAIWA PIER39": "TECHNICAL",
-    "and wander": "TECHNICAL",
-    "meanswhile": "TECHNICAL",
-    "TEATORA": "TECHNICAL",
-    "THE NORTH FACE PURPLE LABEL": "TECHNICAL",
-
-    # Heritage
-    "orSlow": "HERITAGE",
-    "KAPITAL": "HERITAGE",
-    "Kaptain Sunshine": "HERITAGE",
-
-    # Character
-    "Needles": "EXPERIMENTAL",
-    "Engineered Garments": "HERITAGE",
-    "SOUTH2 WEST8": "TECHNICAL",
-    "ANCELLM": "HERITAGE"
-}
+    return NEW_ENTITIES.get(name)
 
 
-def taste_world(name):
+# ============================================================
+# RELATIONSHIP HELPERS
+# ============================================================
 
-    world_key = ENTITY_WORLD.get(
-        name,
-        "CONTEMPORARY"
+def linked_entities(name):
+
+    e = get_entity(name)
+
+    if not e:
+        return []
+
+    entity_id = e["entity_id"]
+
+    results = []
+
+    for r in REL:
+
+        other_id = None
+
+        if r["from_id"] == entity_id:
+            other_id = r["to_id"]
+
+        elif r["to_id"] == entity_id:
+            other_id = r["from_id"]
+
+        if not other_id:
+            continue
+
+        other = IDMAP.get(other_id)
+
+        if not other:
+            continue
+
+        results.append({
+            "name": other["name"],
+            "relation_type": r.get(
+                "relation_type",
+                "connection"
+            ),
+            "strength": float(
+                r.get(
+                    "strength",
+                    0
+                )
+                or 0
+            ),
+            "evidence": r.get(
+                "evidence",
+                ""
+            ),
+        })
+
+    results.sort(
+        key=lambda x: x["strength"],
+        reverse=True
     )
 
-    return TASTE_WORLDS[world_key]
+    return results
 
 
-# =========================================================
-# STYLE
-# =========================================================
+def relationship_copy(relation_type, evidence):
+
+    relation_type = (
+        relation_type
+        or ""
+    ).lower()
+
+    evidence = (
+        evidence
+        or ""
+    ).lower()
+
+    if relation_type == "official_relation":
+        return "OFFICIAL CONNECTION"
+
+    if relation_type == "house_brand":
+        return "HOUSE BRAND"
+
+    if relation_type == "group_context":
+        return "OFFICIAL CONTEXT"
+
+    if relation_type == "taste":
+        return "TASTE CONNECTION"
+
+    if evidence == "official":
+        return "OFFICIAL CONNECTION"
+
+    return "DISCOVERY CONNECTION"
+
+
+# ============================================================
+# SAVE SYSTEM
+# ============================================================
+
+def save_entity(name, selected):
+
+    if name not in st.session_state.saved_entities:
+
+        st.session_state.saved_entities.append(name)
+
+        log_event(
+            "save_click",
+            selected,
+            "MY_DEPTH",
+            name,
+            entity_depth(name)
+        )
+
+
+def unsave_entity(name):
+
+    if name in st.session_state.saved_entities:
+        st.session_state.saved_entities.remove(name)
+
+
+# ============================================================
+# CSS
+# ============================================================
 
 st.markdown(
     """
-    <style>
+<style>
 
-    :root{
-        --acid:#caff00;
-        --ink:#0d0d0d;
-        --paper:#f2f0e9;
-        --soft:#777;
-    }
+:root{
+    --acid:#caff00;
+    --ink:#0d0d0d;
+    --paper:#f2f0e9;
+    --muted:#74746f;
+}
 
-    .stApp{
-        background:var(--paper);
-        color:var(--ink);
-    }
+.stApp{
+    background:var(--paper);
+    color:var(--ink);
+}
 
-    .block-container{
-        max-width:1240px;
-        padding-top:1.5rem;
-        padding-bottom:5rem;
-    }
+.block-container{
+    max-width:1240px;
+    padding-top:1.5rem;
+    padding-bottom:5rem;
+}
 
-    h1{
-        font-size:clamp(4rem,9vw,8rem)!important;
-        line-height:.82!important;
-        letter-spacing:-.06em!important;
-    }
+h1{
+    font-size:clamp(4rem,9vw,8rem)!important;
+    line-height:.82!important;
+    letter-spacing:-.06em!important;
+}
 
-    h2,h3{
-        letter-spacing:-.045em;
-    }
+h2,
+h3{
+    letter-spacing:-.045em;
+}
 
-    .k{
-        font-size:.67rem;
-        letter-spacing:.18em;
-        text-transform:uppercase;
-    }
+.k{
+    font-size:.67rem;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+}
 
-    .rule{
-        border-top:1px solid #111;
-        margin:1.2rem 0 1.8rem;
-    }
+.rule{
+    border-top:1px solid #111;
+    margin:1.5rem 0 1.8rem;
+}
 
-    .acid{
-        background:var(--acid);
-        display:inline-block;
-        padding:.08rem .34rem;
-    }
+.acid{
+    background:var(--acid);
+    display:inline-block;
+    padding:.08rem .34rem;
+}
 
-    .cardtitle{
-        font-size:2rem;
-        font-weight:650;
-        letter-spacing:-.05em;
-        line-height:.95;
-        margin:.4rem 0 .6rem;
-    }
+.cardtitle{
+    font-size:2rem;
+    font-weight:650;
+    letter-spacing:-.05em;
+    line-height:1;
+    margin:.3rem 0 .5rem;
+}
 
-    .taste{
-        font-size:.62rem;
-        letter-spacing:.13em;
-        text-transform:uppercase;
-        color:#555;
-        margin-bottom:.4rem;
-    }
+.world{
+    color:#74746f;
+    font-size:.68rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    margin-bottom:.6rem;
+}
 
-    .visualnote{
-        font-size:.58rem;
-        letter-spacing:.12em;
-        color:#777;
-        text-transform:uppercase;
-        margin-top:.3rem;
-    }
+.visualnote{
+    color:#666;
+    font-size:.78rem;
+    line-height:1.5;
+}
 
-    div[data-testid="stImage"] img{
-        filter:saturate(.55) contrast(.96);
-        border-radius:0;
-    }
+.badge{
+    display:inline-block;
+    background:var(--acid);
+    color:#111;
+    font-size:.58rem;
+    letter-spacing:.14em;
+    padding:.18rem .35rem;
+    margin-bottom:.45rem;
+}
 
-    div[data-testid="stButton"] button{
-        border-radius:0;
-        border:1px solid #111;
-        background:#111;
-        color:white;
-        width:100%;
-    }
+.detailbox{
+    border:1px solid #111;
+    padding:1.4rem;
+    margin-top:.8rem;
+}
 
-    div[data-testid="stButton"] button:hover{
-        background:var(--acid);
-        color:#111;
-    }
+.savedbox{
+    border-top:1px solid #111;
+    padding-top:1rem;
+    margin-top:1rem;
+}
 
-    div[data-testid="stMultiSelect"]
-    span[data-baseweb="tag"]{
-        background:var(--acid);
-        color:#111;
-    }
+div[data-testid="stImage"] img{
+    filter:saturate(.72);
+    border-radius:0;
+}
 
-    </style>
-    """,
+div[data-testid="stButton"] button{
+    border-radius:0;
+    border:1px solid #111;
+    background:#111;
+    color:white;
+    width:100%;
+}
+
+div[data-testid="stButton"] button:hover{
+    background:var(--acid);
+    color:#111;
+}
+
+div[data-testid="stMultiSelect"]
+span[data-baseweb="tag"]{
+    background:var(--acid);
+    color:#111;
+}
+
+</style>
+""",
     unsafe_allow_html=True
 )
 
 
-# =========================================================
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown(
+    """
+<div class='k'>
+DEPTH / INDEPENDENT FASHION DISCOVERY FROM JAPAN
+</div>
+<div class='rule'></div>
+""",
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
 # HERO
-# =========================================================
-
-st.markdown(
-    """
-    <div class='k'>
-    DEPTH / INDEPENDENT FASHION DISCOVERY FROM JAPAN
-    </div>
-    <div class='rule'></div>
-    """,
-    unsafe_allow_html=True
-)
+# ============================================================
 
 a, b = st.columns(
     [1.15, .85],
@@ -415,24 +730,81 @@ with a:
         unsafe_allow_html=True
     )
 
+
 with b:
 
-    hero_world = TASTE_WORLDS["MILITARY"]
+    hero = visual_for("WTAPS")
 
     st.image(
-        hero_world["image"],
+        hero["image"],
         use_container_width=True
     )
 
     st.markdown(
-        "<div class='visualnote'>VISUAL MOOD / TOKYO UTILITY</div>",
+        "<div class='world'>VISUAL MOOD / TOKYO UTILITY</div>",
         unsafe_allow_html=True
     )
 
 
-# =========================================================
-# 01 / YOUR TASTE
-# =========================================================
+# ============================================================
+# MY DEPTH
+# ============================================================
+
+with st.expander(
+    f"MY DEPTH / {len(st.session_state.saved_entities)} SAVED",
+    expanded=False
+):
+
+    if not st.session_state.saved_entities:
+
+        st.caption(
+            "Save discoveries you want to return to."
+        )
+
+    else:
+
+        saved_cols = st.columns(
+            min(
+                3,
+                len(st.session_state.saved_entities)
+            )
+        )
+
+        for col, name in zip(
+            saved_cols,
+            st.session_state.saved_entities[:3]
+        ):
+
+            with col:
+
+                v = visual_for(name)
+
+                st.image(
+                    v["image"],
+                    use_container_width=True
+                )
+
+                st.markdown(
+                    f"**{name}**"
+                )
+
+                st.caption(
+                    v["world"]
+                )
+
+                if st.button(
+                    "REMOVE",
+                    key=f"remove_{name}"
+                ):
+
+                    unsave_entity(name)
+
+                    st.rerun()
+
+
+# ============================================================
+# 01 / TASTE
+# ============================================================
 
 choices = [
     e["name"]
@@ -446,16 +818,24 @@ choices = [
 
 st.markdown(
     """
-    <div class='rule'></div>
-    <div class='k'>01 / YOUR TASTE</div>
-    """,
+<div class='rule'></div>
+<div class='k'>
+01 / YOUR TASTE
+</div>
+""",
     unsafe_allow_html=True
 )
+
+default_taste = [
+    x
+    for x in ["WTAPS", "1LDK"]
+    if x in choices
+]
 
 selected = st.multiselect(
     "Taste",
     choices,
-    default=["WTAPS", "1LDK"],
+    default=default_taste,
     max_selections=5,
     label_visibility="collapsed"
 )
@@ -489,20 +869,20 @@ with c4:
 
 extra = {}
 
-for key, value in [
+for k, v in [
     ("military", military),
     ("technical", technical),
     ("minimal", minimal),
-    ("heritage", heritage)
+    ("heritage", heritage),
 ]:
 
-    if value:
-        extra[key] = 100
+    if v:
+        extra[k] = 100
 
 
-# =========================================================
-# DISCOVERY
-# =========================================================
+# ============================================================
+# RECOMMENDATIONS
+# ============================================================
 
 if selected:
 
@@ -511,14 +891,14 @@ if selected:
         extra or None
     )
 
-    signature = (
+    state_signature = (
         tuple(selected),
         tuple(sorted(extra))
     )
 
     if (
         st.session_state.get("last_selected")
-        != signature
+        != state_signature
     ):
 
         log_event(
@@ -526,86 +906,107 @@ if selected:
             selected
         )
 
-        st.session_state.last_selected = signature
+        st.session_state.last_selected = (
+            state_signature
+        )
 
 
-    # =====================================================
+    # ========================================================
     # 02 / NEXT DISCOVERY
-    # =====================================================
+    # ========================================================
 
     st.markdown(
         """
-        <div class='rule'></div>
-        <div class='k'>02 / NEXT DISCOVERY</div>
-        """,
+<div class='rule'></div>
+<div class='k'>
+02 / NEXT DISCOVERY
+</div>
+""",
         unsafe_allow_html=True
     )
 
+
     cards = [
+
         (
             "SAFE",
             r["SAFE"],
             "Familiar enough to trust."
         ),
+
         (
             "GO DEEPER",
             r["GO_DEEPER"],
             "A familiar thread, taken somewhere less obvious."
         ),
+
         (
             "SURPRISE ME",
             r["SURPRISE_ME"],
             "The one you probably weren't going to search for."
-        )
+        ),
     ]
 
+
     cols = st.columns(3)
+
 
     for col, (
         mode,
         item,
         copy
-    ) in zip(cols, cards):
+    ) in zip(
+        cols,
+        cards
+    ):
 
         with col:
 
             name = item["name"]
-            world = taste_world(name)
 
-            # Mode
+            visual = visual_for(name)
+
+            badge = new_badge(name)
+
+            if badge:
+
+                st.markdown(
+                    f"<span class='badge'>{badge}</span>",
+                    unsafe_allow_html=True
+                )
+
             st.markdown(
                 f"<div class='k'>{mode}</div>",
                 unsafe_allow_html=True
             )
 
-            # Brand
             st.markdown(
                 f"<div class='cardtitle'>{name}</div>",
                 unsafe_allow_html=True
             )
 
-            # Taste identity
             st.markdown(
-                f"<div class='taste'>{world['label']}</div>",
+                f"<div class='world'>{visual['world']}</div>",
                 unsafe_allow_html=True
             )
 
-            # Mood visual
             st.image(
-                world["image"],
+                visual["image"],
                 use_container_width=True
             )
 
             st.markdown(
-                "<div class='visualnote'>VISUAL MOOD / NOT PRODUCT IMAGE</div>",
+                "<div class='world'>VISUAL MOOD / NOT PRODUCT IMAGE</div>",
                 unsafe_allow_html=True
             )
 
-            st.caption(
-                world["description"]
+            st.markdown(
+                f"<div class='visualnote'>{visual['note']}</div>",
+                unsafe_allow_html=True
             )
 
             st.caption(copy)
+
 
             if st.button(
                 "EXPLORE ↘",
@@ -617,26 +1018,186 @@ if selected:
                     selected,
                     mode,
                     name,
-                    item.get("depth", "")
+                    item.get(
+                        "depth",
+                        ""
+                    )
+                )
+
+                log_event(
+                    "detail_view",
+                    selected,
+                    mode,
+                    name,
+                    item.get(
+                        "depth",
+                        ""
+                    )
                 )
 
                 st.session_state.focus = name
+                st.session_state.detail_entity = name
+
+                st.rerun()
 
 
-    # =====================================================
-    # 03 / RABBIT HOLE
-    # =====================================================
+            if name in st.session_state.saved_entities:
 
-    focus = st.session_state.get(
-        "focus",
-        r["GO_DEEPER"]["name"]
+                if st.button(
+                    "SAVED ✓",
+                    key=f"saved_{mode}_{name}"
+                ):
+
+                    unsave_entity(name)
+
+                    st.rerun()
+
+            else:
+
+                if st.button(
+                    "SAVE TO MY DEPTH +",
+                    key=f"save_{mode}_{name}"
+                ):
+
+                    save_entity(
+                        name,
+                        selected
+                    )
+
+                    st.rerun()
+
+
+    # ========================================================
+    # DISCOVERY DETAIL
+    # ========================================================
+
+    detail_name = (
+        st.session_state.detail_entity
     )
+
+    if detail_name:
+
+        detail_visual = visual_for(
+            detail_name
+        )
+
+        detail_entity = get_entity(
+            detail_name
+        )
+
+        st.markdown(
+            """
+<div class='rule'></div>
+<div class='k'>
+DISCOVERY DETAIL
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+        left, right = st.columns(
+            [1, 1],
+            gap="large"
+        )
+
+        with left:
+
+            st.image(
+                detail_visual["image"],
+                use_container_width=True
+            )
+
+        with right:
+
+            badge = new_badge(
+                detail_name
+            )
+
+            if badge:
+
+                st.markdown(
+                    f"<span class='badge'>{badge}</span>",
+                    unsafe_allow_html=True
+                )
+
+            st.markdown(
+                f"## {detail_name}"
+            )
+
+            st.markdown(
+                f"<div class='world'>{detail_visual['world']}</div>",
+                unsafe_allow_html=True
+            )
+
+            st.write(
+                detail_visual["note"]
+            )
+
+            if detail_entity:
+
+                st.caption(
+                    "DISCOVERY DEPTH / "
+                    + detail_entity.get(
+                        "discovery_depth",
+                        "Explore"
+                    ).upper()
+                )
+
+                st.caption(
+                    "ORIGIN / "
+                    + detail_entity.get(
+                        "origin",
+                        "Japan"
+                    ).upper()
+                )
+
+            if (
+                detail_name
+                not in
+                st.session_state.saved_entities
+            ):
+
+                if st.button(
+                    "SAVE TO MY DEPTH ↘",
+                    key=f"detail_save_{detail_name}"
+                ):
+
+                    save_entity(
+                        detail_name,
+                        selected
+                    )
+
+                    st.rerun()
+
+            else:
+
+                st.markdown(
+                    "<span class='acid'>SAVED TO MY DEPTH ✓</span>",
+                    unsafe_allow_html=True
+                )
+
+
+    # ========================================================
+    # FOCUS
+    # ========================================================
+
+    focus = (
+        st.session_state.focus
+        or r["GO_DEEPER"]["name"]
+    )
+
+
+    # ========================================================
+    # 03 / RABBIT HOLE
+    # ========================================================
 
     st.markdown(
         """
-        <div class='rule'></div>
-        <div class='k'>03 / RABBIT HOLE</div>
-        """,
+<div class='rule'></div>
+<div class='k'>
+03 / RABBIT HOLE
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -644,135 +1205,167 @@ if selected:
         f"## From {focus}, keep going ↘"
     )
 
-    fe = BY_NAME.get(
-        focus.lower()
+
+    links = linked_entities(
+        focus
     )
 
-    idmap = {
-        e["entity_id"]: e
-        for e in ENT
-    }
 
-    linked = []
+    # Fallback discovery path
+    if not links:
 
-    if fe:
+        fallback_names = [
+            "nonnative",
+            "nanamica",
+            "THE NORTH FACE PURPLE LABEL",
+        ]
 
-        for relation in REL:
-
-            if (
-                relation["from_id"]
-                == fe["entity_id"]
-            ):
-
-                linked.append(
-                    (
-                        relation["to_id"],
-                        relation["relation_type"]
-                    )
-                )
-
-            elif (
-                relation["to_id"]
-                == fe["entity_id"]
-            ):
-
-                linked.append(
-                    (
-                        relation["from_id"],
-                        relation["relation_type"]
-                    )
-                )
-
-
-    names = [
-        (
-            idmap[entity_id]["name"],
-            relation_type
-        )
-        for entity_id, relation_type in linked
-        if entity_id in idmap
-    ]
-
-
-    if not names:
-
-        names = [
-            (
-                "nonnative",
-                "taste bridge"
-            ),
-            (
-                "nanamica",
-                "next world"
-            ),
-            (
-                "THE NORTH FACE PURPLE LABEL",
-                "line / project"
-            )
+        links = [
+            {
+                "name": x,
+                "relation_type":
+                    "taste",
+                "strength":
+                    50,
+                "evidence":
+                    "hypothesis",
+            }
+            for x in fallback_names
+            if x.lower() in BY_NAME
+            and x != focus
         ]
 
 
-    rabbit_cols = st.columns(
-        min(3, len(names))
-    )
+    # Don't repeat current focus
+    links = [
+        x
+        for x in links
+        if x["name"] != focus
+    ]
 
 
-    for col, (
-        name,
-        relation_type
-    ) in zip(
+    rabbit_cols = st.columns(3)
+
+
+    for col, link in zip(
         rabbit_cols,
-        names[:3]
+        links[:3]
     ):
 
         with col:
 
-            world = taste_world(name)
+            name = link["name"]
+
+            visual = visual_for(
+                name
+            )
+
+            badge = new_badge(
+                name
+            )
+
+            if badge:
+
+                st.markdown(
+                    f"<span class='badge'>{badge}</span>",
+                    unsafe_allow_html=True
+                )
 
             st.markdown(
-                f"**{name}**"
+                f"<div class='cardtitle'>{name}</div>",
+                unsafe_allow_html=True
             )
 
             st.markdown(
-                f"<div class='taste'>{world['label']}</div>",
+                f"<div class='world'>{visual['world']}</div>",
                 unsafe_allow_html=True
             )
 
             st.image(
-                world["image"],
+                visual["image"],
                 use_container_width=True
             )
 
-            st.caption(
-                relation_type.upper()
+            relation_label = (
+                relationship_copy(
+                    link["relation_type"],
+                    link["evidence"]
+                )
             )
+
+            st.markdown(
+                f"<div class='k'>{relation_label}</div>",
+                unsafe_allow_html=True
+            )
+
+            st.caption(
+                visual["note"]
+            )
+
 
             if st.button(
                 "GO ↘",
-                key=f"rh_{name}"
+                key=f"rh_{focus}_{name}"
             ):
 
                 log_event(
                     "rabbit_hole_click",
                     selected,
                     "RABBIT_HOLE",
-                    name
+                    name,
+                    entity_depth(name)
+                )
+
+                log_event(
+                    "detail_view",
+                    selected,
+                    "RABBIT_HOLE",
+                    name,
+                    entity_depth(name)
                 )
 
                 st.session_state.focus = name
+                st.session_state.detail_entity = name
 
                 st.rerun()
 
 
-    # =====================================================
+            if (
+                name
+                not in
+                st.session_state.saved_entities
+            ):
+
+                if st.button(
+                    "SAVE +",
+                    key=f"rabbit_save_{focus}_{name}"
+                ):
+
+                    save_entity(
+                        name,
+                        selected
+                    )
+
+                    st.rerun()
+
+            else:
+
+                st.caption(
+                    "SAVED TO MY DEPTH ✓"
+                )
+
+
+    # ========================================================
     # 04 / FIND IT
-    # =====================================================
+    # ========================================================
 
     st.markdown(
         """
-        <div class='rule'></div>
-        <div class='k'>04 / FIND IT</div>
-        """,
+<div class='rule'></div>
+<div class='k'>
+04 / FIND IT
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -788,21 +1381,99 @@ if selected:
             "find_it_click",
             selected,
             "FIND_IT",
-            focus
+            focus,
+            entity_depth(focus)
         )
 
-        st.success(
+        st.info(
             "Interest recorded. "
             "Purchase destinations will be connected "
             "after MVP demand validation."
         )
 
 
-# =========================================================
+# ============================================================
+# EMPTY STATE
+# ============================================================
+
+else:
+
+    st.markdown(
+        """
+<div class='rule'></div>
+<div class='k'>
+START SOMEWHERE
+</div>
+"""
+        ,
+        unsafe_allow_html=True
+    )
+
+    st.write(
+        "Choose a brand, shop or line you already know."
+    )
+
+
+# ============================================================
+# RETURN REASON
+# ============================================================
+
+st.markdown(
+    """
+<div class='rule'></div>
+<div class='k'>
+COME BACK DEEPER
+</div>
+""",
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    "### New connections. New labels. New reasons to keep digging."
+)
+
+st.caption(
+    "DEPTH is designed to evolve as new Japanese labels, "
+    "projects, collaborations and connections are discovered."
+)
+
+
+# ============================================================
 # SIDEBAR
-# =========================================================
+# ============================================================
 
 with st.sidebar:
+
+    st.markdown(
+        "### DEPTH"
+    )
+
+    st.caption(
+        "Japanese Fashion Discovery"
+    )
+
+    st.markdown("---")
+
+    st.markdown(
+        f"**MY DEPTH — "
+        f"{len(st.session_state.saved_entities)} SAVED**"
+    )
+
+    if st.session_state.saved_entities:
+
+        for name in st.session_state.saved_entities:
+
+            st.caption(
+                f"↘ {name}"
+            )
+
+    else:
+
+        st.caption(
+            "Nothing saved yet."
+        )
+
+    st.markdown("---")
 
     st.markdown(
         "### MVP SOURCE"
