@@ -31,16 +31,18 @@ if "logged_session" not in st.session_state:
 @st.cache_resource
 def get_supabase():
     if create_client is None:
-        st.error("Supabase library could not be imported.")
-        return None
+        return None, "supabase library could not be imported"
 
     try:
         url = st.secrets["supabase"]["url"]
         key = st.secrets["supabase"]["key"]
-        return create_client(url, key)
+
+        client = create_client(url, key)
+        return client, None
+
     except Exception as e:
-        st.error(f"Supabase connection error: {e}")
-        return None
+        return None, f"{type(e).__name__}: {e}"
+        
 def log_event(event, selected="", mode="", entity="", depth=""):
     row={
         "ts_utc":datetime.now(timezone.utc).isoformat(),
@@ -51,13 +53,20 @@ def log_event(event, selected="", mode="", entity="", depth=""):
         "selected":"|".join(selected) if isinstance(selected,list) else selected,
         "mode":mode,"entity":entity,"depth":depth
     }
-    db=get_supabase()
-    if db is not None:
-        try:
-            db.table("depth_events").insert(row).execute()
-            return
-        except Exception:
-            pass
+db, db_error = get_supabase()
+
+if db_error:
+    st.error(f"Supabase connection error: {db_error}")
+
+if db is not None:
+    try:
+        result = db.table("depth_events").insert(row).execute()
+        st.success(f"Supabase event saved: {event}")
+        return
+    except Exception as e:
+        st.error(
+            f"Supabase insert error: {type(e).__name__}: {e}"
+        )
     # Local fallback for development only; Community Cloud storage is not persistent.
     try:
         new=not LOG.exists()
