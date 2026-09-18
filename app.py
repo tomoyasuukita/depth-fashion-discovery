@@ -63,7 +63,10 @@ def log_event(event, selected="", mode="", entity="", depth=""):
 
     if db is not None:
         try:
-            result = db.table("depth_events").insert(row).execute()
+            result = db.table("depth_events").insert(
+    　　　　　　 row,
+                returning="minimal"
+            ).execute()
             st.success(f"Supabase event saved: {event}")
             return
         except Exception as e:
