@@ -44,39 +44,42 @@ def get_supabase():
         return None, f"{type(e).__name__}: {e}"
         
 def log_event(event, selected="", mode="", entity="", depth=""):
-    row={
-        "ts_utc":datetime.now(timezone.utc).isoformat(),
-        "session_id":st.session_state.session_id,
-        "event":event,
-        "source":st.session_state.source,
-        "campaign":st.session_state.campaign,
-        "selected":"|".join(selected) if isinstance(selected,list) else selected,
-        "mode":mode,"entity":entity,"depth":depth
+    row = {
+        "ts_utc": datetime.now(timezone.utc).isoformat(),
+        "session_id": st.session_state.session_id,
+        "event": event,
+        "source": st.session_state.source,
+        "campaign": st.session_state.campaign,
+        "selected": "|".join(selected) if isinstance(selected, list) else selected,
+        "mode": mode,
+        "entity": entity,
+        "depth": depth
     }
-db, db_error = get_supabase()
 
-if db_error:
-    st.error(f"Supabase connection error: {db_error}")
+    db, db_error = get_supabase()
 
-if db is not None:
+    if db_error:
+        st.error(f"Supabase connection error: {db_error}")
+
+    if db is not None:
+        try:
+            result = db.table("depth_events").insert(row).execute()
+            st.success(f"Supabase event saved: {event}")
+            return
+        except Exception as e:
+            st.error(f"Supabase insert error: {type(e).__name__}: {e}")
+
+    # Local fallback
     try:
-        result = db.table("depth_events").insert(row).execute()
-        st.success(f"Supabase event saved: {event}")
-        return
-    except Exception as e:
-        st.error(
-            f"Supabase insert error: {type(e).__name__}: {e}"
-        )
-    # Local fallback for development only; Community Cloud storage is not persistent.
-    try:
-        new=not LOG.exists()
-        with LOG.open("a",newline="",encoding="utf-8") as f:
-            w=csv.DictWriter(f,fieldnames=LOG_FIELDS)
-            if new:w.writeheader()
+        new = not LOG.exists()
+        with LOG.open("a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=LOG_FIELDS)
+            if new:
+                w.writeheader()
             w.writerow(row)
-    except Exception:
-        pass
-
+    except Exception as e:
+        st.error(f"Local log error: {type(e).__name__}: {e}")
+        
 if not st.session_state.logged_session:
     log_event("session_start")
     st.session_state.logged_session=True
