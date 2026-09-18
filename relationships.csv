@@ -1,0 +1,11 @@
+from_id,to_id,relation_type,strength,evidence
+B001,B002,taste,92,hypothesis
+B001,B003,taste,74,hypothesis
+B003,B004,taste,76,hypothesis
+B004,L001,official_relation,100,official
+S001,B005,house_brand,100,official
+S001,B006,taste,82,hypothesis
+S001,B007,taste,72,hypothesis
+B013,B014,group_context,95,official_context
+B004,B012,taste,78,hypothesis
+B003,B008,taste,70,hypothesis

@@ -1,0 +1,17 @@
+entity_id,type,name,origin,street,minimal,utility,heritage,technical,military,discovery_depth,status
+B001,brand,WTAPS,Japan,90,30,80,65,50,95,Gateway,active
+B002,brand,DESCENDANT,Japan,78,48,75,62,42,72,Explore,active
+B003,brand,nonnative,Japan,55,65,82,48,65,48,Explore,active
+B004,brand,nanamica,Japan,35,75,80,45,88,25,Explore,active
+L001,line,THE NORTH FACE PURPLE LABEL,Japan,45,65,88,45,92,30,Deep,active
+S001,shop,1LDK,Japan,40,85,58,45,40,20,Gateway,active
+B005,brand,UNIVERSAL PRODUCTS.,Japan,35,88,60,55,35,20,Explore,active
+B006,brand,Graphpaper,Japan,30,92,58,42,35,18,Explore,active
+B007,brand,A.PRESSE,Japan,25,82,50,88,25,65,Deep,active
+B008,brand,meanswhile,Japan,45,55,92,45,88,35,Rabbit Hole,active
+B009,brand,NEIGHBORHOOD,Japan,92,28,68,72,38,88,Gateway,active
+B010,brand,COMOLI,Japan,20,94,45,82,18,18,Explore,active
+B011,brand,AURALEE,Japan,18,96,38,68,20,10,Gateway,active
+B012,brand,DAIWA PIER39,Japan,50,62,94,38,92,32,Explore,active
+B013,brand,Needles,Japan,82,38,50,72,20,30,Gateway,active
+B014,brand,Engineered Garments,Japan,68,42,72,90,30,62,Deep,active
