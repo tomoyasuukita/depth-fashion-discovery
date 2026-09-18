@@ -22,11 +22,6 @@ st.set_page_config(
     layout="wide"
 )
 
-
-# =========================================================
-# BASE / LOG
-# =========================================================
-
 BASE = Path(__file__).parent
 LOG = BASE / "behavior_log.csv"
 
@@ -81,23 +76,23 @@ def get_supabase():
     try:
         url = st.secrets["supabase"]["url"]
         key = st.secrets["supabase"]["key"]
-
-        client = create_client(url, key)
-
-        return client, None
+        return create_client(url, key), None
 
     except Exception as e:
         return None, f"{type(e).__name__}: {e}"
 
 
 def log_event(event, selected="", mode="", entity="", depth=""):
+
     row = {
         "ts_utc": datetime.now(timezone.utc).isoformat(),
         "session_id": st.session_state.session_id,
         "event": event,
         "source": st.session_state.source,
         "campaign": st.session_state.campaign,
-        "selected": "|".join(selected) if isinstance(selected, list) else selected,
+        "selected": "|".join(selected)
+        if isinstance(selected, list)
+        else selected,
         "mode": mode,
         "entity": entity,
         "depth": depth
@@ -114,13 +109,11 @@ def log_event(event, selected="", mode="", entity="", depth=""):
                 row,
                 returning="minimal"
             ).execute()
-
             return
 
         except Exception as e:
             st.error(
-                f"Supabase insert error: "
-                f"{type(e).__name__}: {e}"
+                f"Supabase insert error: {type(e).__name__}: {e}"
             )
 
     # Local fallback
@@ -145,186 +138,141 @@ def log_event(event, selected="", mode="", entity="", depth=""):
 
     except Exception as e:
         st.error(
-            f"Local log error: "
-            f"{type(e).__name__}: {e}"
+            f"Local log error: {type(e).__name__}: {e}"
         )
 
 
-# Session start tracking
 if not st.session_state.logged_session:
     log_event("session_start")
     st.session_state.logged_session = True
 
 
 # =========================================================
-# DEPTH VISUAL LIBRARY
+# DEPTH TASTE WORLDS
 # ---------------------------------------------------------
-# MVPではブランド公式商品画像を直接転載せず、
-# ブランドのTasteに近いeditorial visualを使用。
+# 画像はブランド商品を意味しない。
+# ブランドの世界観 / Taste を表現するVisual。
 # =========================================================
 
-IMG = {
+TASTE_WORLDS = {
 
-    # -----------------------------------------------------
-    # STREET / MILITARY
-    # -----------------------------------------------------
+    "MILITARY": {
+        "label": "MILITARY / UTILITY / TOKYO",
+        "image":
+            "https://images.unsplash.com/photo-1523398002811-999ca8dec234"
+            "?auto=format&fit=crop&w=1200&q=85",
+        "description":
+            "Uniforms, utility, workwear and the quieter side of Tokyo street."
+    },
 
-    "WTAPS":
-        "https://images.unsplash.com/photo-1523398002811-999ca8dec234?auto=format&fit=crop&w=1000&q=80",
+    "QUIET": {
+        "label": "QUIET / MATERIAL / REFINED",
+        "image":
+            "https://images.unsplash.com/photo-1594938298603-c8148c4dae35"
+            "?auto=format&fit=crop&w=1200&q=85",
+        "description":
+            "Material, proportion and restraint over obvious branding."
+    },
 
-    "NEIGHBORHOOD":
-        "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1000&q=80",
+    "TECHNICAL": {
+        "label": "TECHNICAL / OUTDOOR / URBAN",
+        "image":
+            "https://images.unsplash.com/photo-1551632811-561732d1e306"
+            "?auto=format&fit=crop&w=1200&q=85",
+        "description":
+            "Outdoor function translated into everyday urban clothing."
+    },
 
-    "DESCENDANT":
-        "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?auto=format&fit=crop&w=1000&q=80",
+    "HERITAGE": {
+        "label": "HERITAGE / VINTAGE / CRAFT",
+        "image":
+            "https://images.unsplash.com/photo-1542272604-787c3835535d"
+            "?auto=format&fit=crop&w=1200&q=85",
+        "description":
+            "Old garments, craft, patina and reinterpretations of the familiar."
+    },
 
-    "C.E":
-        "https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=1000&q=80",
+    "CONTEMPORARY": {
+        "label": "TOKYO / CONTEMPORARY / BALANCE",
+        "image":
+            "https://images.unsplash.com/photo-1523381210434-271e8be1f52b"
+            "?auto=format&fit=crop&w=1200&q=85",
+        "description":
+            "Modern Tokyo clothing built around proportion, balance and everyday use."
+    },
 
-    "UNDERCOVER":
-        "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1000&q=80",
-
-
-    # -----------------------------------------------------
-    # TOKYO CONTEMPORARY
-    # -----------------------------------------------------
-
-    "nonnative":
-        "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=1000&q=80",
-
-    "Graphpaper":
-        "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1000&q=80",
-
-    "FreshService":
-        "https://images.unsplash.com/photo-1496217590455-aa63a8350eea?auto=format&fit=crop&w=1000&q=80",
-
-    "UNIVERSAL PRODUCTS.":
-        "https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?auto=format&fit=crop&w=1000&q=80",
-
-    "N.HOOLYWOOD":
-        "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1000&q=80",
-
-
-    # -----------------------------------------------------
-    # MINIMAL / REFINED
-    # -----------------------------------------------------
-
-    "AURALEE":
-        "https://images.unsplash.com/photo-1525507119028-ed4c629a60a3?auto=format&fit=crop&w=1000&q=80",
-
-    "COMOLI":
-        "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=1000&q=80",
-
-    "CIOTA":
-        "https://images.unsplash.com/photo-1506629082955-511b1aa562c8?auto=format&fit=crop&w=1000&q=80",
-
-    "blurhms":
-        "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=1000&q=80",
-
-    "ATON":
-        "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=1000&q=80",
-
-    "YOKE":
-        "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?auto=format&fit=crop&w=1000&q=80",
-
-    "ssstein":
-        "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=1000&q=80",
-
-
-    # -----------------------------------------------------
-    # UTILITY / TECHNICAL
-    # -----------------------------------------------------
-
-    "nanamica":
-        "https://images.unsplash.com/photo-1544966503-7cc5ac882d5f?auto=format&fit=crop&w=1000&q=80",
-
-    "DAIWA PIER39":
-        "https://images.unsplash.com/photo-1551632811-561732d1e306?auto=format&fit=crop&w=1000&q=80",
-
-    "and wander":
-        "https://images.unsplash.com/photo-1551698618-1dfe5d97d256?auto=format&fit=crop&w=1000&q=80",
-
-    "meanswhile":
-        "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=1000&q=80",
-
-    "TEATORA":
-        "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=1000&q=80",
-
-    "THE NORTH FACE PURPLE LABEL":
-        "https://images.unsplash.com/photo-1551632811-561732d1e306?auto=format&fit=crop&w=1000&q=80",
-
-
-    # -----------------------------------------------------
-    # HERITAGE / CRAFT
-    # -----------------------------------------------------
-
-    "orSlow":
-        "https://images.unsplash.com/photo-1542272604-787c3835535d?auto=format&fit=crop&w=1000&q=80",
-
-    "KAPITAL":
-        "https://images.unsplash.com/photo-1541099649105-f69ad21f3246?auto=format&fit=crop&w=1000&q=80",
-
-    "Kaptain Sunshine":
-        "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?auto=format&fit=crop&w=1000&q=80",
-
-    "A.PRESSE":
-        "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1000&q=80",
-
-    "MAATEE&SONS":
-        "https://images.unsplash.com/photo-1610652492500-ded49ceeb378?auto=format&fit=crop&w=1000&q=80",
-
-
-    # -----------------------------------------------------
-    # CHARACTER / EXPERIMENTAL
-    # -----------------------------------------------------
-
-    "Needles":
-        "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1000&q=80",
-
-    "Engineered Garments":
-        "https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?auto=format&fit=crop&w=1000&q=80",
-
-    "SOUTH2 WEST8":
-        "https://images.unsplash.com/photo-1460353581641-37baddab0fa2?auto=format&fit=crop&w=1000&q=80",
-
-    "ANCELLM":
-        "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=1000&q=80",
+    "EXPERIMENTAL": {
+        "label": "CHARACTER / LAYERING / UNEXPECTED",
+        "image":
+            "https://images.unsplash.com/photo-1552374196-c4e7ffc6e126"
+            "?auto=format&fit=crop&w=1200&q=85",
+        "description":
+            "Familiar references pushed somewhere stranger and more personal."
+    }
 }
 
 
-# ---------------------------------------------------------
-# Fallback visuals
-# 未登録entityが出ても全て同じ画像にはしない
-# ---------------------------------------------------------
+# =========================================================
+# ENTITY → TASTE WORLD
+# =========================================================
 
-FALLBACKS = [
-    "https://images.unsplash.com/photo-1525507119028-ed4c629a60a3?auto=format&fit=crop&w=1000&q=80",
+ENTITY_WORLD = {
 
-    "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=1000&q=80",
+    # Military / street
+    "WTAPS": "MILITARY",
+    "NEIGHBORHOOD": "MILITARY",
+    "DESCENDANT": "MILITARY",
+    "C.E": "EXPERIMENTAL",
+    "UNDERCOVER": "EXPERIMENTAL",
 
-    "https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?auto=format&fit=crop&w=1000&q=80",
+    # Tokyo contemporary
+    "nonnative": "CONTEMPORARY",
+    "Graphpaper": "CONTEMPORARY",
+    "FreshService": "CONTEMPORARY",
+    "UNIVERSAL PRODUCTS.": "CONTEMPORARY",
+    "N.HOOLYWOOD": "CONTEMPORARY",
+    "1LDK": "CONTEMPORARY",
 
-    "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1000&q=80",
+    # Quiet / refined
+    "AURALEE": "QUIET",
+    "COMOLI": "QUIET",
+    "CIOTA": "QUIET",
+    "blurhms": "QUIET",
+    "ATON": "QUIET",
+    "YOKE": "QUIET",
+    "ssstein": "QUIET",
+    "A.PRESSE": "HERITAGE",
+    "MAATEE&SONS": "HERITAGE",
 
-    "https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?auto=format&fit=crop&w=1000&q=80",
+    # Technical
+    "nanamica": "TECHNICAL",
+    "DAIWA PIER39": "TECHNICAL",
+    "and wander": "TECHNICAL",
+    "meanswhile": "TECHNICAL",
+    "TEATORA": "TECHNICAL",
+    "THE NORTH FACE PURPLE LABEL": "TECHNICAL",
 
-    "https://images.unsplash.com/photo-1542272604-787c3835535d?auto=format&fit=crop&w=1000&q=80",
-]
+    # Heritage
+    "orSlow": "HERITAGE",
+    "KAPITAL": "HERITAGE",
+    "Kaptain Sunshine": "HERITAGE",
+
+    # Character
+    "Needles": "EXPERIMENTAL",
+    "Engineered Garments": "HERITAGE",
+    "SOUTH2 WEST8": "TECHNICAL",
+    "ANCELLM": "HERITAGE"
+}
 
 
-def entity_image(name):
-    """
-    Entityごとの画像を返す。
-    登録済みなら専用画像、
-    未登録ならentity名から安定的にfallbackを割り当てる。
-    """
+def taste_world(name):
 
-    if name in IMG:
-        return IMG[name]
+    world_key = ENTITY_WORLD.get(
+        name,
+        "CONTEMPORARY"
+    )
 
-    index = sum(ord(c) for c in name) % len(FALLBACKS)
-
-    return FALLBACKS[index]
+    return TASTE_WORLDS[world_key]
 
 
 # =========================================================
@@ -339,6 +287,7 @@ st.markdown(
         --acid:#caff00;
         --ink:#0d0d0d;
         --paper:#f2f0e9;
+        --soft:#777;
     }
 
     .stApp{
@@ -383,11 +332,28 @@ st.markdown(
         font-size:2rem;
         font-weight:650;
         letter-spacing:-.05em;
-        margin:.25rem 0;
+        line-height:.95;
+        margin:.4rem 0 .6rem;
+    }
+
+    .taste{
+        font-size:.62rem;
+        letter-spacing:.13em;
+        text-transform:uppercase;
+        color:#555;
+        margin-bottom:.4rem;
+    }
+
+    .visualnote{
+        font-size:.58rem;
+        letter-spacing:.12em;
+        color:#777;
+        text-transform:uppercase;
+        margin-top:.3rem;
     }
 
     div[data-testid="stImage"] img{
-        filter:saturate(.7);
+        filter:saturate(.55) contrast(.96);
         border-radius:0;
     }
 
@@ -436,6 +402,7 @@ a, b = st.columns(
 )
 
 with a:
+
     st.title("GO\nDEEPER.")
 
     st.write(
@@ -449,9 +416,17 @@ with a:
     )
 
 with b:
+
+    hero_world = TASTE_WORLDS["MILITARY"]
+
     st.image(
-        entity_image("WTAPS"),
+        hero_world["image"],
         use_container_width=True
+    )
+
+    st.markdown(
+        "<div class='visualnote'>VISUAL MOOD / TOKYO UTILITY</div>",
+        unsafe_allow_html=True
     )
 
 
@@ -462,7 +437,11 @@ with b:
 choices = [
     e["name"]
     for e in ENT
-    if e["type"] in ("brand", "shop", "line")
+    if e["type"] in (
+        "brand",
+        "shop",
+        "line"
+    )
 ]
 
 st.markdown(
@@ -480,7 +459,6 @@ selected = st.multiselect(
     max_selections=5,
     label_visibility="collapsed"
 )
-
 
 c1, c2, c3, c4 = st.columns(4)
 
@@ -517,12 +495,13 @@ for key, value in [
     ("minimal", minimal),
     ("heritage", heritage)
 ]:
+
     if value:
         extra[key] = 100
 
 
 # =========================================================
-# RECOMMENDATION
+# DISCOVERY
 # =========================================================
 
 if selected:
@@ -532,14 +511,14 @@ if selected:
         extra or None
     )
 
-    current_signature = (
+    signature = (
         tuple(selected),
         tuple(sorted(extra))
     )
 
     if (
         st.session_state.get("last_selected")
-        != current_signature
+        != signature
     ):
 
         log_event(
@@ -547,7 +526,7 @@ if selected:
             selected
         )
 
-        st.session_state.last_selected = current_signature
+        st.session_state.last_selected = signature
 
 
     # =====================================================
@@ -561,7 +540,6 @@ if selected:
         """,
         unsafe_allow_html=True
     )
-
 
     cards = [
         (
@@ -581,30 +559,50 @@ if selected:
         )
     ]
 
-
     cols = st.columns(3)
 
-
-    for col, (mode, item, copy) in zip(
-        cols,
-        cards
-    ):
+    for col, (
+        mode,
+        item,
+        copy
+    ) in zip(cols, cards):
 
         with col:
 
             name = item["name"]
+            world = taste_world(name)
 
+            # Mode
+            st.markdown(
+                f"<div class='k'>{mode}</div>",
+                unsafe_allow_html=True
+            )
+
+            # Brand
+            st.markdown(
+                f"<div class='cardtitle'>{name}</div>",
+                unsafe_allow_html=True
+            )
+
+            # Taste identity
+            st.markdown(
+                f"<div class='taste'>{world['label']}</div>",
+                unsafe_allow_html=True
+            )
+
+            # Mood visual
             st.image(
-                entity_image(name),
+                world["image"],
                 use_container_width=True
             )
 
             st.markdown(
-                f"""
-                <div class='k'>{mode}</div>
-                <div class='cardtitle'>{name}</div>
-                """,
+                "<div class='visualnote'>VISUAL MOOD / NOT PRODUCT IMAGE</div>",
                 unsafe_allow_html=True
+            )
+
+            st.caption(
+                world["description"]
             )
 
             st.caption(copy)
@@ -646,7 +644,6 @@ if selected:
         f"## From {focus}, keep going ↘"
     )
 
-
     fe = BY_NAME.get(
         focus.lower()
     )
@@ -657,7 +654,6 @@ if selected:
     }
 
     linked = []
-
 
     if fe:
 
@@ -699,6 +695,7 @@ if selected:
 
 
     if not names:
+
         names = [
             (
                 "nonnative",
@@ -720,20 +717,30 @@ if selected:
     )
 
 
-    for col, (name, relation_type) in zip(
+    for col, (
+        name,
+        relation_type
+    ) in zip(
         rabbit_cols,
         names[:3]
     ):
 
         with col:
 
-            st.image(
-                entity_image(name),
-                use_container_width=True
-            )
+            world = taste_world(name)
 
             st.markdown(
                 f"**{name}**"
+            )
+
+            st.markdown(
+                f"<div class='taste'>{world['label']}</div>",
+                unsafe_allow_html=True
+            )
+
+            st.image(
+                world["image"],
+                use_container_width=True
             )
 
             st.caption(
@@ -773,7 +780,6 @@ if selected:
         "Found something worth chasing?"
     )
 
-
     if st.button(
         f"FIND {focus.upper()} ↗"
     ):
@@ -793,7 +799,7 @@ if selected:
 
 
 # =========================================================
-# SIDEBAR / TRAFFIC SOURCE
+# SIDEBAR
 # =========================================================
 
 with st.sidebar:
