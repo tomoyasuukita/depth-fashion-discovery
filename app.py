@@ -31,14 +31,16 @@ if "logged_session" not in st.session_state:
 @st.cache_resource
 def get_supabase():
     if create_client is None:
-        return None
-    try:
-        url=st.secrets["supabase"]["url"]
-        key=st.secrets["supabase"]["key"]
-        return create_client(url,key)
-    except Exception:
+        st.error("Supabase library could not be imported.")
         return None
 
+    try:
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        return create_client(url, key)
+    except Exception as e:
+        st.error(f"Supabase connection error: {e}")
+        return None
 def log_event(event, selected="", mode="", entity="", depth=""):
     row={
         "ts_utc":datetime.now(timezone.utc).isoformat(),
